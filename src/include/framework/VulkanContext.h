@@ -5,6 +5,7 @@
 #include <vulkan/vulkan.h>
 
 #include <framework/Common.h>
+#include <framework/GPUResource.h>
 
 #define VK_FAILED(x) ((x) != VK_SUCCESS)
 
@@ -22,6 +23,7 @@ namespace frm
         void queueSubmit(const VkSubmitInfo& submitInfo);
         void waitIdle();
 
+        void createBuffer(const VkBufferCreateInfo& createInfo, VmaMemoryUsage usage, BufferResourceRef& buffer);
         void createCommandPool(uint32_t flags, VkCommandPool* cmdPool);
         void createCommandBuffer(VkCommandPool cmdPool, VkCommandBuffer* cmdBuffer);
         void createShaderModule(const std::vector<uint8_t>& shaderBlob, VkShaderModule* shaderModule);
@@ -29,6 +31,8 @@ namespace frm
         void createGraphicsPipeline(const VkGraphicsPipelineCreateInfo& createInfo, VkPipeline* pipeline);
         void createFramebuffer(const VkFramebufferCreateInfo& createInfo, VkFramebuffer* framebuffer);
         void createRenderPass(const VkRenderPassCreateInfo& createInfo, VkRenderPass* renderpass);
+
+        void destroyBuffer(VkBuffer buffer);
 
         VkDevice getDevice() const { return m_device; }
         VkQueue getQueue() const { return m_deviceQueue; }
@@ -44,6 +48,7 @@ namespace frm
         VkSurfaceKHR m_surface;
         VkSurfaceCapabilitiesKHR m_surfaceCaps;
         VkDevice m_device;
+        VmaAllocator m_allocator;
         VkQueue m_deviceQueue;
         uint32_t m_deviceQueueIndex;
         VkSwapchainKHR m_swapchain;

@@ -1,27 +1,88 @@
 #include <framework/App.h>
 #include <framework/Resource.h>
+#include <framework/GPUResource.h>
+#include <framework/ShapeGen.h>
 
-struct MyApp : public frm::App
+struct VertexBufferExample : public frm::App
 {
-    VkCommandPool pool;
-    VkCommandBuffer cmdBuffer;
+    frm::BufferResourceRef stagingBuffer; // BufferResourceRef is a wrapper for VkBuffer, object deletion is done automatically :)
+    frm::BufferResourceRef vertexBuffer;
+    VkCommandPool cmdPool;
+    VkCommandBuffer renderCmd;
     VkRenderPass renderPass;
+    std::vector<VkFramebuffer> fb;
     VkShaderModule vsModule;
     VkShaderModule fsModule;
     VkPipelineLayout pipelineLayout;
     VkPipeline pipeline;
-    std::vector<VkFramebuffer> fb;
 
     void onInit(frm::VulkanContext& context) override
     {
-        size_t swapbufferCount = context.getSwapbufferCount();
+        context.createCommandPool(VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT, &cmdPool);
+        
+        initBuffer(context);
+        initRenderPass(context);
+        initFramebuffer(context);
+        loadResources(context);
+        initPipeline(context);
+        recordCmd(context);
+    }
 
-        initResource();
+    void initBuffer(frm::VulkanContext& context)
+    {
+        frm::VertexPosCol* triangle;
+        size_t numVertices;
+        VkBufferCreateInfo bufferInfo{};
+        VkCommandBuffer copyCmd;
 
-        context.createCommandPool(VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT, &pool);
-        context.createCommandBuffer(pool, &cmdBuffer);
+        numVertices = frm::ShapeGen::makeColorTriangle(1.0f, triangle); // make triangle
 
-        // Create render pass
+        // create staging buffer
+        bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+        bufferInfo.size = sizeof(frm::VertexPosCol) * numVertices;
+        bufferInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+
+        context.createBuffer(bufferInfo, VMA_MEMORY_USAGE_CPU_ONLY, stagingBuffer);
+
+        // create actual buffer on the gpu
+        bufferInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+        context.createBuffer(bufferInfo, VMA_MEMORY_USAGE_GPU_ONLY, vertexBuffer);
+
+        // copy triangle data to staging buffer
+        frm::VertexPosCol* mapped = nullptr;
+        stagingBuffer->map(&mapped);
+        std::memcpy(mapped, triangle, bufferInfo.size);
+        stagingBuffer->unmap();
+
+        // create a copy command to copy staging buffer to the actual buffer
+        context.createCommandBuffer(cmdPool, &copyCmd);
+
+        VkCommandBufferBeginInfo beginInfo{};
+        beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+        beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+        VkBufferCopy region{};
+        region.size = bufferInfo.size;
+
+        vkBeginCommandBuffer(copyCmd, &beginInfo);
+        vkCmdCopyBuffer(copyCmd, stagingBuffer->get(), vertexBuffer->get(), 1, &region); // copy the staging buffer to the actual buffer
+        vkEndCommandBuffer(copyCmd);
+
+        // submit our copy command to GPU!!
+        VkSubmitInfo submit{};
+        submit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+        submit.commandBufferCount = 1;
+        submit.pCommandBuffers = &copyCmd;
+
+        context.queueSubmit(submit);
+
+        vkFreeCommandBuffers(context.getDevice(), cmdPool, 1, &copyCmd);
+
+        delete triangle;
+    }
+
+    void initRenderPass(frm::VulkanContext& context)
+    {
         VkRenderPassCreateInfo renderPassInfo{};
         VkAttachmentDescription attachment{};
         VkAttachmentReference attRef{};
@@ -52,9 +113,10 @@ struct MyApp : public frm::App
         renderPassInfo.pSubpasses = &subpass;
 
         context.createRenderPass(renderPassInfo, &renderPass);
+    }
 
-        initPipeline();
-
+    void initFramebuffer(frm::VulkanContext& context)
+    {
         // Create framebuffer for each swapbuffer
         for (size_t i = 0; i < context.getSwapbufferCount(); i++) {
             VkFramebufferCreateInfo fbInfo{};
@@ -75,53 +137,11 @@ struct MyApp : public frm::App
             context.createFramebuffer(fbInfo, &framebuffer);
             fb.push_back(framebuffer);
         }
-
-        // record command buffer
-        // since we won't render the triangle everytime, we just have to render it once to the swapchain and present it
-        for (size_t i = 0; i < context.getSwapbufferCount(); i++) {
-            VkCommandBufferBeginInfo cmdBegin{};
-            VkRenderPassBeginInfo rpBegin{};
-            VkClearValue clearValue{};
-            VkSubmitInfo submitInfo{};
-
-            clearValue.color.float32[0] = 0.0f;
-            clearValue.color.float32[1] = 0.0f;
-            clearValue.color.float32[2] = 0.0f;
-            clearValue.color.float32[3] = 0.0f;
-
-            cmdBegin.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-
-            rpBegin.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-            rpBegin.renderPass = renderPass;
-            rpBegin.framebuffer = fb[i];
-            rpBegin.clearValueCount = 1;
-            rpBegin.pClearValues = &clearValue;
-
-            getClientSizeRect(rpBegin.renderArea);
-
-            vkResetCommandBuffer(cmdBuffer, 0); // we use this command buffer twice, so we need to reset it
-
-            // record command buffer
-            vkBeginCommandBuffer(cmdBuffer, &cmdBegin);
-            vkCmdBeginRenderPass(cmdBuffer, &rpBegin, VK_SUBPASS_CONTENTS_INLINE);
-            vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
-            vkCmdDraw(cmdBuffer, 3, 1, 0, 0); // draw triangle to the framebuffer
-            vkCmdEndRenderPass(cmdBuffer);
-            vkEndCommandBuffer(cmdBuffer);
-
-            submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-            submitInfo.commandBufferCount = 1;
-            submitInfo.pCommandBuffers = &cmdBuffer;
-
-            // execute the command buffer
-            context.queueSubmit(submitInfo);
-        }
     }
 
-    void initResource()
+    void loadResources(frm::VulkanContext& context)
     {
         // Initialize resources
-        frm::VulkanContext& context = this->getContext();
         std::vector<uint8_t> vsBlob;
         std::vector<uint8_t> fsBlob;
 
@@ -137,13 +157,14 @@ struct MyApp : public frm::App
         context.createShaderModule(fsBlob, &fsModule);
     }
 
-    void initPipeline()
+    void initPipeline(frm::VulkanContext& context)
     {
-        // Create our first pipeline
-        frm::VulkanContext& context = this->getContext();
+        VkPushConstantRange pconstRange = {};
         VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
         VkGraphicsPipelineCreateInfo pipelineInfo{};
         VkPipelineShaderStageCreateInfo shaderStages[2] = {};
+        VkVertexInputBindingDescription inputBinding{};
+        VkVertexInputAttributeDescription inputAttribs[2] = {};
         VkPipelineVertexInputStateCreateInfo vertexInput{};
         VkPipelineInputAssemblyStateCreateInfo inputAsm{};
         VkViewport viewport{};
@@ -170,7 +191,24 @@ struct MyApp : public frm::App
         shaderStages[1].module = fsModule;
         shaderStages[1].pName = "main";
 
+        inputBinding.binding = 0;
+        inputBinding.stride = sizeof(frm::VertexPosCol);
+
+        inputAttribs[0].location = 0;
+        inputAttribs[0].binding = 0;
+        inputAttribs[0].format = VK_FORMAT_R32G32B32_SFLOAT;
+        inputAttribs[0].offset = 0;
+
+        inputAttribs[1].location = 1;
+        inputAttribs[1].binding = 0;
+        inputAttribs[1].format = VK_FORMAT_R32G32B32_SFLOAT;
+        inputAttribs[1].offset = 12;
+
         vertexInput.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+        vertexInput.vertexBindingDescriptionCount = 1;
+        vertexInput.pVertexBindingDescriptions = &inputBinding;
+        vertexInput.vertexAttributeDescriptionCount = 2;
+        vertexInput.pVertexAttributeDescriptions = inputAttribs;
 
         inputAsm.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
         inputAsm.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
@@ -219,6 +257,56 @@ struct MyApp : public frm::App
         context.createGraphicsPipeline(pipelineInfo, &pipeline);
     }
 
+    void recordCmd(frm::VulkanContext& context)
+    {
+        VkBuffer vbuf = vertexBuffer->get();
+        VkDeviceSize ofs = 0;
+
+        context.createCommandBuffer(cmdPool, &renderCmd);
+
+        for (uint32_t i = 0; i < context.getSwapbufferCount(); i++) {
+            VkCommandBufferBeginInfo cmdBegin{};
+            VkRenderPassBeginInfo rpBegin{};
+            VkClearValue clearValue{};
+            VkSubmitInfo submitInfo{};
+
+            clearValue.color.float32[0] = 0.0f;
+            clearValue.color.float32[1] = 0.0f;
+            clearValue.color.float32[2] = 0.0f;
+            clearValue.color.float32[3] = 0.0f;
+
+            cmdBegin.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+
+            rpBegin.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+            rpBegin.renderPass = renderPass;
+            rpBegin.framebuffer = fb[i];
+            rpBegin.clearValueCount = 1;
+            rpBegin.pClearValues = &clearValue;
+
+            getClientSizeRect(rpBegin.renderArea);
+
+            VkCommandBufferBeginInfo beginInfo{};
+            beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+
+            vkResetCommandBuffer(renderCmd, 0);
+            vkBeginCommandBuffer(renderCmd, &beginInfo);
+            vkCmdBeginRenderPass(renderCmd, &rpBegin, VK_SUBPASS_CONTENTS_INLINE);
+            vkCmdBindPipeline(renderCmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
+            vkCmdBindVertexBuffers(renderCmd, 0, 1, &vbuf, &ofs); // bind our vertex buffer
+            vkCmdDraw(renderCmd, 3, 1, 0, 0); // draw triangle to the framebuffer
+            vkCmdEndRenderPass(renderCmd);
+            vkEndCommandBuffer(renderCmd);
+
+            // submit our render command to GPU!!
+            VkSubmitInfo submit{};
+            submit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+            submit.commandBufferCount = 1;
+            submit.pCommandBuffers = &renderCmd;
+
+            context.queueSubmit(submit);
+        }
+    }
+
     void onUpdate(frm::VulkanContext& context, double dt) override
     {
 
@@ -226,6 +314,7 @@ struct MyApp : public frm::App
 
     void onRender(frm::VulkanContext& context, double dt) override
     {
+        
     }
 
     void onDestroy(frm::VulkanContext& context) override
@@ -242,11 +331,11 @@ struct MyApp : public frm::App
         }
 
         vkDestroyRenderPass(device, renderPass, nullptr);
-        vkDestroyCommandPool(device, pool, nullptr);
+        vkDestroyCommandPool(device, cmdPool, nullptr);
     }
 };
 
 int main()
 {
-    return frm::App::run<MyApp>(640, 480);
+    return frm::App::run<VertexBufferExample>(640, 480);
 }

@@ -10,6 +10,8 @@
 #include <chrono>
 #include <thread>
 
+#include "vk_mem_alloc.h"
+
 #define GLM_FORCE_RADIANS 1
 #define GLM_FORCE_LEFT_HANDED 1
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE 1

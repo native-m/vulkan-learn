@@ -64,14 +64,14 @@ namespace frm
             currentTime = newTime;
         }
 
-        onDestroy();
+        onDestroy(m_vkCtx);
     }
 
     void App::onInit(VulkanContext& context)
     {
     }
 
-    void App::onDestroy()
+    void App::onDestroy(VulkanContext& context)
     {
     }
 

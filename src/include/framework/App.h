@@ -17,7 +17,7 @@ namespace frm
         void dispatch();
 
         virtual void onInit(VulkanContext& context);
-        virtual void onDestroy();
+        virtual void onDestroy(VulkanContext& context);
         virtual void onUpdate(VulkanContext& context, double dt) = 0;
         virtual void onRender(VulkanContext& context, double dt) = 0;
         virtual void onGuiRender();

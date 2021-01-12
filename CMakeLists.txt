@@ -20,5 +20,5 @@ find_package(glm REQUIRED)
 add_subdirectory("src/framework")
 add_subdirectory("src/app/01-HelloTriangle")
 add_subdirectory("src/app/02-PushConstant")
-
-message("${GLM_INCLUDE_DIRS}")
+add_subdirectory("src/app/03-VertexBuffer")
+add_subdirectory("src/app/04-IndexBuffer")

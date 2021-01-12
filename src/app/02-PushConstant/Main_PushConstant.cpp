@@ -1,7 +1,7 @@
 #include <framework/App.h>
 #include <framework/Resource.h>
 
-struct MyApp : public frm::App
+struct PushConstantExample : public frm::App
 {
     VkCommandPool pool;
     VkCommandBuffer cmdBuffer;
@@ -259,9 +259,8 @@ struct MyApp : public frm::App
         context.queueSubmit(submitInfo);
     }
 
-    void onDestroy() override
+    void onDestroy(frm::VulkanContext& context) override
     {
-        frm::VulkanContext& context = this->getContext();
         VkDevice device = context.getDevice();
 
         vkDestroyPipeline(device, pipeline, nullptr);
@@ -280,5 +279,5 @@ struct MyApp : public frm::App
 
 int main()
 {
-    return frm::App::run<MyApp>(640, 480);
+    return frm::App::run<PushConstantExample>(640, 480);
 }

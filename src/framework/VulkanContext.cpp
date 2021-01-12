@@ -8,6 +8,7 @@ namespace frm
         m_pdFeatures(),
         m_surface(nullptr),
         m_device(nullptr),
+        m_allocator(nullptr),
         m_deviceQueue(nullptr),
         m_deviceQueueIndex(0),
         m_swapchain(nullptr),
@@ -34,6 +35,7 @@ namespace frm
         std::vector<VkExtensionProperties> deviceExts;
         VkDeviceQueueCreateInfo queueCreateInfo{};
         VkDeviceCreateInfo deviceInfo{};
+        VmaAllocatorCreateInfo allocatorInfo{};
         VkFenceCreateInfo fenceInfo{};
 
         if (m_initialized) {
@@ -47,7 +49,7 @@ namespace frm
 
         vkGetPhysicalDeviceSurfaceCapabilitiesKHR(m_physicalDevice, m_surface, &m_surfaceCaps);
 
-        // query queue families
+        // query physical device queue families
         vkGetPhysicalDeviceQueueFamilyProperties(m_physicalDevice, &queueFamilyCount, nullptr);
         queueFamilyProps.resize(queueFamilyCount);
         vkGetPhysicalDeviceQueueFamilyProperties(m_physicalDevice, &queueFamilyCount, queueFamilyProps.data());
@@ -67,7 +69,7 @@ namespace frm
         }
 
         if (graphicsQueueIndex == -1) {
-            throw std::runtime_error("No graphics queue found");
+            throw std::runtime_error("No graphics queue found!");
         }
 
         m_deviceQueueIndex = graphicsQueueIndex;
@@ -78,7 +80,7 @@ namespace frm
         queueCreateInfo.queueCount = 1;
         queueCreateInfo.pQueuePriorities = &queuePriority;
 
-        // create device
+        // create logical device
         deviceInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
         deviceInfo.queueCreateInfoCount = 1;
         deviceInfo.pQueueCreateInfos = &queueCreateInfo; // the queue we want to create
@@ -92,7 +94,18 @@ namespace frm
             throw std::runtime_error("Cannot create device");
         }
 
+        // get our graphics queue from logical device
         vkGetDeviceQueue(m_device, graphicsQueueIndex, 0, &m_deviceQueue);
+
+        // create memory allocator, used to allocate GPU resources such as buffer
+        allocatorInfo.vulkanApiVersion = VK_API_VERSION_1_2;
+        allocatorInfo.physicalDevice = m_physicalDevice;
+        allocatorInfo.device = m_device;
+        allocatorInfo.instance = m_instance;
+
+        if (VK_FAILED(vmaCreateAllocator(&allocatorInfo, &m_allocator))) {
+            throw std::runtime_error("Cannot create allocator");
+        }
 
         createSwapchain();
 
@@ -141,6 +154,20 @@ namespace frm
     void VulkanContext::waitIdle()
     {
         vkDeviceWaitIdle(m_device);
+    }
+
+    void VulkanContext::createBuffer(const VkBufferCreateInfo& createInfo, VmaMemoryUsage usage, BufferResourceRef& buffer)
+    {
+        VkBuffer buf;
+        VmaAllocation alloc;
+        VmaAllocationCreateInfo allocInfo{};
+        allocInfo.usage = usage;
+
+        if (VK_FAILED(vmaCreateBuffer(m_allocator, &createInfo, &allocInfo, &buf, &alloc, nullptr))) {
+            throw std::runtime_error("Cannot create buffer");
+        }
+
+        buffer = std::make_shared<BufferResource>(m_allocator, buf, alloc);
     }
 
     void VulkanContext::createCommandPool(uint32_t flags, VkCommandPool* cmdPool)
@@ -241,7 +268,7 @@ namespace frm
         physicalDevices.resize(physicalDeviceCount);
         vkEnumeratePhysicalDevices(m_instance, &physicalDeviceCount, physicalDevices.data());
 
-        // find discrete gpu (discrete AMD, NVIDIA, etc)
+        // find discrete gpu (AMD, NVIDIA, etc)
         for (auto p : physicalDevices) {
             VkPhysicalDeviceProperties prop{};
 
@@ -259,7 +286,7 @@ namespace frm
             m_physicalDevice = physicalDevices[0]; // select default gpu
         }
 
-        vkGetPhysicalDeviceFeatures(m_physicalDevice, &m_pdFeatures);
+        vkGetPhysicalDeviceFeatures(m_physicalDevice, &m_pdFeatures); // get current gpu feature
     }
 
     void VulkanContext::shutdown()
@@ -280,6 +307,10 @@ namespace frm
 
         if (m_swapchain != nullptr) {
             vkDestroySwapchainKHR(m_device, m_swapchain, nullptr);
+        }
+
+        if (m_allocator != nullptr) {
+            vmaDestroyAllocator(m_allocator);
         }
 
         if (m_device != nullptr) {
@@ -360,6 +391,7 @@ namespace frm
 
         // ------------------------- OPTIONAL SECTION -------------------------
         // Pre-determine swapchain layout to VK_IMAGE_LAYOUT_PRESENT_SRC_KHR
+        // This prevents validation error when flipping swapchain images when not in use.
 
         cmdPoolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
         cmdPoolInfo.queueFamilyIndex = m_deviceQueueIndex;
@@ -426,7 +458,7 @@ namespace frm
     }
 
     const char* VulkanContext::g_instanceLayers[] = {
-        "VK_LAYER_KHRONOS_validation"
+        "VK_LAYER_KHRONOS_validation" // IMPORTANT!!!!
     };
 
     const char* VulkanContext::g_instanceExtensions[] = {
