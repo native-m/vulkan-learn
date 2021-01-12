@@ -5,6 +5,6 @@ My pesonal Vulkan playground.
 
 On Windows, you need to build & install SDL2 yourself as a static library, and put it on `deps` folder.
 
-Linux? Not tested yet.. sorry.
+Linux? I don't know, but it should work.
 
 Vulkan SDK is required!

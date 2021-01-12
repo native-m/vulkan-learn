@@ -12,9 +12,8 @@ struct MyApp : public frm::App
     VkPipeline pipeline;
     std::vector<VkFramebuffer> fb;
 
-    void onInit() override
+    void onInit(frm::VulkanContext& context) override
     {
-        frm::VulkanContext& context = this->getContext();
         size_t swapbufferCount = context.getSwapbufferCount();
 
         initResource();
@@ -78,7 +77,7 @@ struct MyApp : public frm::App
         }
 
         // record command buffer
-        // since we won't render the triangle everytime, we just have to record it once to the swapchain and present it
+        // since we won't render the triangle everytime, we just have to render it once to the swapchain and present it
         for (size_t i = 0; i < context.getSwapbufferCount(); i++) {
             VkCommandBufferBeginInfo cmdBegin{};
             VkRenderPassBeginInfo rpBegin{};
@@ -106,7 +105,7 @@ struct MyApp : public frm::App
             vkBeginCommandBuffer(cmdBuffer, &cmdBegin);
             vkCmdBeginRenderPass(cmdBuffer, &rpBegin, VK_SUBPASS_CONTENTS_INLINE);
             vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
-            vkCmdDraw(cmdBuffer, 3, 1, 0, 0);
+            vkCmdDraw(cmdBuffer, 3, 1, 0, 0); // draw triangle to the framebuffer
             vkCmdEndRenderPass(cmdBuffer);
             vkEndCommandBuffer(cmdBuffer);
 
@@ -121,6 +120,7 @@ struct MyApp : public frm::App
 
     void initResource()
     {
+        // Initialize resources
         frm::VulkanContext& context = this->getContext();
         std::vector<uint8_t> vsBlob;
         std::vector<uint8_t> fsBlob;
@@ -139,6 +139,7 @@ struct MyApp : public frm::App
 
     void initPipeline()
     {
+        // Create our first pipeline
         frm::VulkanContext& context = this->getContext();
         VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
         VkGraphicsPipelineCreateInfo pipelineInfo{};
@@ -218,12 +219,12 @@ struct MyApp : public frm::App
         context.createGraphicsPipeline(pipelineInfo, &pipeline);
     }
 
-    void onUpdate(double dt) override
+    void onUpdate(frm::VulkanContext& context, double dt) override
     {
 
     }
 
-    void onRender(double dt) override
+    void onRender(frm::VulkanContext& context, double dt) override
     {
     }
 

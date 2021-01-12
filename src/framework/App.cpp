@@ -35,7 +35,7 @@ namespace frm
         }
 
         m_vkCtx.initDevice(m_window);
-        onInit();
+        onInit(m_vkCtx);
     }
 
     void App::dispatch()
@@ -55,10 +55,10 @@ namespace frm
                 }
             }
 
-            onUpdate(dt);
+            onUpdate(m_vkCtx, dt);
 
             m_vkCtx.prepareNextSwapbuffer(m_currentSwapbuffer);
-            onRender(dt);
+            onRender(m_vkCtx, dt);
             m_vkCtx.present(m_currentSwapbuffer);
 
             currentTime = newTime;
@@ -67,7 +67,7 @@ namespace frm
         onDestroy();
     }
 
-    void App::onInit()
+    void App::onInit(VulkanContext& context)
     {
     }
 

@@ -351,4 +351,4 @@ MigrationBackup/
 
 out/
 deps/*
-!deps/dummy.txt
+!deps/README.txt

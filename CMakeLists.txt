@@ -5,14 +5,20 @@ cmake_minimum_required(VERSION 3.8)
 
 include("cmake/Extra.cmake")
 
-if(WIN32)
+if (WIN32)
     list(APPEND CMAKE_PREFIX_PATH "deps/SDL2")
-endif()
+endif ()
+
+set(glm_DIR "deps/glm/cmake/glm")
 
 project("vulkan-learn")
 
 find_package(SDL2 REQUIRED)
 find_package(Vulkan REQUIRED)
+find_package(glm REQUIRED)
 
 add_subdirectory("src/framework")
-add_subdirectory("src/app")
+add_subdirectory("src/app/01-HelloTriangle")
+add_subdirectory("src/app/02-PushConstant")
+
+message("${GLM_INCLUDE_DIRS}")

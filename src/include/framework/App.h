@@ -16,10 +16,10 @@ namespace frm
         void init(int w, int h);
         void dispatch();
 
-        virtual void onInit();
+        virtual void onInit(VulkanContext& context);
         virtual void onDestroy();
-        virtual void onUpdate(double dt) = 0;
-        virtual void onRender(double dt) = 0;
+        virtual void onUpdate(VulkanContext& context, double dt) = 0;
+        virtual void onRender(VulkanContext& context, double dt) = 0;
         virtual void onGuiRender();
 
         VulkanContext& getContext() { return m_vkCtx; };
