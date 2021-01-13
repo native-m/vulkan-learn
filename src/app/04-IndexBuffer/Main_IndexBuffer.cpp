@@ -186,7 +186,6 @@ struct IndexBufferExample : public frm::App
 
     void initPipeline(frm::VulkanContext& context)
     {
-        VkPushConstantRange pconstRange = {};
         VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
         VkGraphicsPipelineCreateInfo pipelineInfo{};
         VkPipelineShaderStageCreateInfo shaderStages[2] = {};

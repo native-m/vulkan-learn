@@ -23,6 +23,7 @@ namespace frm
         void queueSubmit(const VkSubmitInfo& submitInfo);
         void waitIdle();
 
+        // Wrapper for vkCreateX functions
         void createBuffer(const VkBufferCreateInfo& createInfo, VmaMemoryUsage usage, BufferResourceRef& buffer);
         void createCommandPool(uint32_t flags, VkCommandPool* cmdPool);
         void createCommandBuffer(VkCommandPool cmdPool, VkCommandBuffer* cmdBuffer);

@@ -36,16 +36,16 @@ namespace frm
         numIndices = 6;
 
         // Build vertices
-        verts[0].pos = glm::vec3(scale, scale, 1.0f);
+        verts[0].pos = glm::vec3(scale, scale, 0.0f);
         verts[0].col = glm::vec3(1.0f, 0.0f, 0.0f);
 
-        verts[1].pos = glm::vec3(-scale, scale, 1.0f);
+        verts[1].pos = glm::vec3(-scale, scale, 0.0f);
         verts[1].col = glm::vec3(0.0f, 1.0f, 0.0f);
 
-        verts[2].pos = glm::vec3(-scale, -scale, 1.0f);
+        verts[2].pos = glm::vec3(-scale, -scale, 0.0f);
         verts[2].col = glm::vec3(0.0f, 0.0f, 1.0f);
 
-        verts[3].pos = glm::vec3(scale, -scale, 1.0f);
+        verts[3].pos = glm::vec3(scale, -scale, 0.0f);
         verts[3].col = glm::vec3(1.0f, 0.0f, 1.0f);
 
         // Build indices

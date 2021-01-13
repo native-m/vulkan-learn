@@ -3,10 +3,11 @@
 #include <framework/GPUResource.h>
 #include <framework/ShapeGen.h>
 
-struct VertexBufferExample : public frm::App
+struct TransformExample : public frm::App
 {
     frm::BufferResourceRef stagingBuffer; // BufferResourceRef is a wrapper for VkBuffer, object deletion is done automatically :)
     frm::BufferResourceRef vertexBuffer;
+    frm::BufferResourceRef indexBuffer;
     VkCommandPool cmdPool;
     VkCommandBuffer renderCmd;
     VkRenderPass renderPass;
@@ -15,11 +16,22 @@ struct VertexBufferExample : public frm::App
     VkShaderModule fsModule;
     VkPipelineLayout pipelineLayout;
     VkPipeline pipeline;
+    VkRect2D viewRect;
+    float aspect = 0.f;
+    float time = 0.f;
+
+    struct MyConstants
+    {
+        glm::mat4 wvpMatrix{};
+    };
+
+    MyConstants constants;
 
     void onInit(frm::VulkanContext& context) override
     {
         context.createCommandPool(VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT, &cmdPool);
         
+        initTransformation();
         initBuffer(context);
         initRenderPass(context);
         initFramebuffer(context);
@@ -28,14 +40,28 @@ struct VertexBufferExample : public frm::App
         recordCmd(context);
     }
 
+    void initTransformation()
+    {
+        // define viewport size
+        getClientSizeRect(viewRect);
+
+        // define projection aspect ratio
+        aspect = static_cast<float>(viewRect.extent.width) / static_cast<float>(viewRect.extent.height);
+    }
+
     void initBuffer(frm::VulkanContext& context)
     {
-        frm::VertexPosCol* triangle;
+        frm::VertexPosCol* vertices = nullptr;
+        uint32_t* indices = nullptr;
         size_t numVertices;
+        size_t numIndices;
         VkBufferCreateInfo bufferInfo{};
         VkCommandBuffer copyCmd;
 
-        numVertices = frm::ShapeGen::makeColorTriangle(1.0f, triangle); // make triangle
+        numVertices = frm::ShapeGen::makeColorPlane(0.5f, indices, vertices, numIndices); // make a flat plane
+
+        // create a temporary command buffer to copy buffer
+        context.createCommandBuffer(cmdPool, &copyCmd);
 
         // create staging buffer
         bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
@@ -44,28 +70,30 @@ struct VertexBufferExample : public frm::App
 
         context.createBuffer(bufferInfo, VMA_MEMORY_USAGE_CPU_ONLY, stagingBuffer);
 
-        // create actual buffer on the gpu
+        // create vertex buffer with the same size as the staging buffer
         bufferInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
         context.createBuffer(bufferInfo, VMA_MEMORY_USAGE_GPU_ONLY, vertexBuffer);
 
-        // copy triangle data to staging buffer
+        // create index buffer
+        bufferInfo.usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+        bufferInfo.size = sizeof(uint32_t) * numIndices;
+        context.createBuffer(bufferInfo, VMA_MEMORY_USAGE_GPU_ONLY, indexBuffer);
+
+        // copy vertex data to staging buffer
         frm::VertexPosCol* mapped = nullptr;
         stagingBuffer->map(&mapped);
-        std::memcpy(mapped, triangle, bufferInfo.size);
+        std::memcpy(mapped, vertices, sizeof(frm::VertexPosCol) * numVertices);
         stagingBuffer->unmap();
 
-        // create a copy command to copy staging buffer to the actual buffer
-        context.createCommandBuffer(cmdPool, &copyCmd);
-
+        // copy vertex data which currently inside the staging buffer to the vertex buffer
         VkCommandBufferBeginInfo beginInfo{};
         beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-        beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
 
         VkBufferCopy region{};
-        region.size = bufferInfo.size;
+        region.size = sizeof(frm::VertexPosCol) * numVertices;
 
         vkBeginCommandBuffer(copyCmd, &beginInfo);
-        vkCmdCopyBuffer(copyCmd, stagingBuffer->get(), vertexBuffer->get(), 1, &region); // copy the staging buffer to the actual buffer
+        vkCmdCopyBuffer(copyCmd, stagingBuffer->get(), vertexBuffer->get(), 1, &region);
         vkEndCommandBuffer(copyCmd);
 
         // submit our copy command to GPU!!
@@ -76,9 +104,28 @@ struct VertexBufferExample : public frm::App
 
         context.queueSubmit(submit);
 
+        // Now do the same thing with index data
+
+        // copy index data to staging buffer
+        uint32_t* mappedIndices;
+        stagingBuffer->map(&mappedIndices);
+        std::memcpy(mappedIndices, indices, sizeof(uint32_t) * numIndices);
+        stagingBuffer->unmap();
+
+        // copy index data which currently inside the staging buffer to the vertex buffer
+        region.size = sizeof(uint32_t) * numIndices;
+
+        vkResetCommandBuffer(copyCmd, 0);
+        vkBeginCommandBuffer(copyCmd, &beginInfo);
+        vkCmdCopyBuffer(copyCmd, stagingBuffer->get(), indexBuffer->get(), 1, &region);
+        vkEndCommandBuffer(copyCmd);
+
+        context.queueSubmit(submit);
+
         vkFreeCommandBuffers(context.getDevice(), cmdPool, 1, &copyCmd);
 
-        delete triangle;
+        delete indices;
+        delete vertices;
     }
 
     void initRenderPass(frm::VulkanContext& context)
@@ -121,17 +168,14 @@ struct VertexBufferExample : public frm::App
         for (size_t i = 0; i < context.getSwapbufferCount(); i++) {
             VkFramebufferCreateInfo fbInfo{};
             VkImageView imgView = context.getSwapbufferView(i);
-            VkRect2D imgSize{};
             VkFramebuffer framebuffer;
-
-            getClientSizeRect(imgSize); // get our window client size
 
             fbInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
             fbInfo.renderPass = renderPass;
             fbInfo.attachmentCount = 1;
             fbInfo.pAttachments = &imgView;
-            fbInfo.width = imgSize.extent.width;
-            fbInfo.height = imgSize.extent.height;
+            fbInfo.width = viewRect.extent.width;
+            fbInfo.height = viewRect.extent.height;
             fbInfo.layers = 1;
 
             context.createFramebuffer(fbInfo, &framebuffer);
@@ -159,6 +203,7 @@ struct VertexBufferExample : public frm::App
 
     void initPipeline(frm::VulkanContext& context)
     {
+        VkPushConstantRange pconstRange = {};
         VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
         VkGraphicsPipelineCreateInfo pipelineInfo{};
         VkPipelineShaderStageCreateInfo shaderStages[2] = {};
@@ -172,11 +217,14 @@ struct VertexBufferExample : public frm::App
         VkPipelineMultisampleStateCreateInfo multisample{};
         VkPipelineColorBlendStateCreateInfo colorBlend{};
         VkPipelineColorBlendAttachmentState blendAtt{};
-        VkRect2D clientRect{};
 
-        getClientSizeRect(clientRect);
+        pconstRange.offset = 0;
+        pconstRange.size = sizeof(MyConstants);
+        pconstRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
 
         pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+        pipelineLayoutInfo.pushConstantRangeCount = 1;
+        pipelineLayoutInfo.pPushConstantRanges = &pconstRange;
 
         context.createPipelineLayout(pipelineLayoutInfo, &pipelineLayout);
 
@@ -214,22 +262,22 @@ struct VertexBufferExample : public frm::App
 
         viewport.x = 0;
         viewport.y = 0;
-        viewport.width = static_cast<float>(clientRect.extent.width);
-        viewport.height = static_cast<float>(clientRect.extent.height);
+        viewport.width = static_cast<float>(viewRect.extent.width);
+        viewport.height = static_cast<float>(viewRect.extent.height);
         viewport.minDepth = 0.f;
         viewport.maxDepth = 1.f;
 
         viewportState.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
         viewportState.scissorCount = 1;
-        viewportState.pScissors = &clientRect;
+        viewportState.pScissors = &viewRect;
         viewportState.viewportCount = 1;
         viewportState.pViewports = &viewport;
 
         rasterState.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
         rasterState.polygonMode = VK_POLYGON_MODE_FILL;
         rasterState.lineWidth = 1.0f;
-        rasterState.cullMode = VK_CULL_MODE_BACK_BIT;
-        rasterState.frontFace = VK_FRONT_FACE_CLOCKWISE;
+        rasterState.cullMode = VK_CULL_MODE_NONE;
+        rasterState.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
 
         multisample.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
         multisample.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
@@ -258,62 +306,65 @@ struct VertexBufferExample : public frm::App
 
     void recordCmd(frm::VulkanContext& context)
     {
-        VkBuffer vbuf = vertexBuffer->get();
-        VkDeviceSize ofs = 0;
-
         context.createCommandBuffer(cmdPool, &renderCmd);
-
-        for (uint32_t i = 0; i < context.getSwapbufferCount(); i++) {
-            VkCommandBufferBeginInfo cmdBegin{};
-            VkRenderPassBeginInfo rpBegin{};
-            VkClearValue clearValue{};
-            VkSubmitInfo submitInfo{};
-
-            clearValue.color.float32[0] = 0.0f;
-            clearValue.color.float32[1] = 0.0f;
-            clearValue.color.float32[2] = 0.0f;
-            clearValue.color.float32[3] = 0.0f;
-
-            cmdBegin.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-
-            rpBegin.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-            rpBegin.renderPass = renderPass;
-            rpBegin.framebuffer = fb[i];
-            rpBegin.clearValueCount = 1;
-            rpBegin.pClearValues = &clearValue;
-
-            getClientSizeRect(rpBegin.renderArea);
-
-            VkCommandBufferBeginInfo beginInfo{};
-            beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-
-            vkResetCommandBuffer(renderCmd, 0);
-            vkBeginCommandBuffer(renderCmd, &beginInfo);
-            vkCmdBeginRenderPass(renderCmd, &rpBegin, VK_SUBPASS_CONTENTS_INLINE);
-            vkCmdBindPipeline(renderCmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
-            vkCmdBindVertexBuffers(renderCmd, 0, 1, &vbuf, &ofs); // bind our vertex buffer
-            vkCmdDraw(renderCmd, 3, 1, 0, 0); // draw triangle to the framebuffer
-            vkCmdEndRenderPass(renderCmd);
-            vkEndCommandBuffer(renderCmd);
-
-            // submit our render command to GPU!!
-            VkSubmitInfo submit{};
-            submit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-            submit.commandBufferCount = 1;
-            submit.pCommandBuffers = &renderCmd;
-
-            context.queueSubmit(submit);
-        }
     }
 
     void onUpdate(frm::VulkanContext& context, double dt) override
     {
+        constants.wvpMatrix = glm::perspectiveLH(glm::radians(45.0f), aspect, 0.01f, 500.f) *
+            glm::lookAtLH(glm::vec3(0.f, 0.f, -2.f), glm::vec3(0.f, 0.f, 1.f), glm::vec3(0.f, 1.f, 0.f)) *
+            glm::rotate(glm::identity<glm::mat4>(), time, glm::vec3(0.f, 1.f, 0.f));
 
+        time += static_cast<float>(dt);
     }
 
     void onRender(frm::VulkanContext& context, double dt) override
     {
-        
+        VkBuffer buf = vertexBuffer->get();
+        VkDeviceSize ofs = 0;
+        VkCommandBufferBeginInfo cmdBegin{};
+        VkRenderPassBeginInfo rpBegin{};
+        VkClearValue clearValue{};
+        VkSubmitInfo submitInfo{};
+
+        clearValue.color.float32[0] = 0.0f;
+        clearValue.color.float32[1] = 0.0f;
+        clearValue.color.float32[2] = 0.0f;
+        clearValue.color.float32[3] = 0.0f;
+
+        cmdBegin.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+
+        rpBegin.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+        rpBegin.renderPass = renderPass;
+        rpBegin.framebuffer = fb[getCurrentSwapbuffer()];
+        rpBegin.clearValueCount = 1;
+        rpBegin.pClearValues = &clearValue;
+        rpBegin.renderArea.offset.x = 0;
+        rpBegin.renderArea.offset.y = 0;
+        rpBegin.renderArea.extent.width = viewRect.extent.width;
+        rpBegin.renderArea.extent.height = viewRect.extent.height;
+
+        VkCommandBufferBeginInfo beginInfo{};
+        beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+
+        vkResetCommandBuffer(renderCmd, 0);
+        vkBeginCommandBuffer(renderCmd, &beginInfo);
+        vkCmdBeginRenderPass(renderCmd, &rpBegin, VK_SUBPASS_CONTENTS_INLINE);
+        vkCmdBindPipeline(renderCmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
+        vkCmdBindVertexBuffers(renderCmd, 0, 1, &buf, &ofs); // bind vertex buffer
+        vkCmdBindIndexBuffer(renderCmd, indexBuffer->get(), 0, VK_INDEX_TYPE_UINT32); // bind index buffer
+        vkCmdPushConstants(renderCmd, pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(MyConstants), &constants); // set push constant values
+        vkCmdDrawIndexed(renderCmd, 6, 1, 0, 0, 0); // draw triangle to the framebuffer
+        vkCmdEndRenderPass(renderCmd);
+        vkEndCommandBuffer(renderCmd);
+
+        // submit our render command to GPU!!
+        VkSubmitInfo submit{};
+        submit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+        submit.commandBufferCount = 1;
+        submit.pCommandBuffers = &renderCmd;
+
+        context.queueSubmit(submit);
     }
 
     void onDestroy(frm::VulkanContext& context) override
@@ -336,5 +387,5 @@ struct VertexBufferExample : public frm::App
 
 int main()
 {
-    return frm::App::run<VertexBufferExample>(640, 480);
+    return frm::App::run<TransformExample>(640, 480);
 }
