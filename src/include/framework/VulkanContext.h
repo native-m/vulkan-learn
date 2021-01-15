@@ -25,18 +25,26 @@ namespace frm
 
         // Wrapper for vkCreateX functions
         void createBuffer(const VkBufferCreateInfo& createInfo, VmaMemoryUsage usage, BufferResourceRef& buffer);
+        void createImage(const VkImageCreateInfo& createInfo, VmaMemoryUsage usage, ImageResourceRef& image);
+        void createImageView(const VkImageViewCreateInfo& createInfo, VkImageView* imageView);
         void createCommandPool(uint32_t flags, VkCommandPool* cmdPool);
         void createCommandBuffer(VkCommandPool cmdPool, VkCommandBuffer* cmdBuffer);
         void createShaderModule(const std::vector<uint8_t>& shaderBlob, VkShaderModule* shaderModule);
+        void createDescriptorLayout(const VkDescriptorSetLayoutCreateInfo& createInfo, VkDescriptorSetLayout* setLayout);
         void createPipelineLayout(const VkPipelineLayoutCreateInfo& createInfo, VkPipelineLayout* pipelineLayout);
         void createGraphicsPipeline(const VkGraphicsPipelineCreateInfo& createInfo, VkPipeline* pipeline);
         void createFramebuffer(const VkFramebufferCreateInfo& createInfo, VkFramebuffer* framebuffer);
         void createRenderPass(const VkRenderPassCreateInfo& createInfo, VkRenderPass* renderpass);
+        void createDescriptorPool(const VkDescriptorPoolCreateInfo& createInfo, VkDescriptorPool* descriptorPool);
+        void createSampler(const VkSamplerCreateInfo& createInfo, VkSampler* sampler);
+
+        void allocDescriptorSet(VkDescriptorSetLayout layout, VkDescriptorPool descPool, VkDescriptorSet* set);
 
         void destroyBuffer(VkBuffer buffer);
 
         VkDevice getDevice() const { return m_device; }
         VkQueue getQueue() const { return m_deviceQueue; }
+        uint32_t getQueueIndex() const { return m_deviceQueueIndex; }
         size_t getSwapbufferCount() const { return m_swapchainImages.size(); }
         VkImage getSwapbuffer(size_t idx) const { return m_swapchainImages[idx]; }
         VkImageView getSwapbufferView(size_t idx) const { return m_swapchainImgViews[idx]; }

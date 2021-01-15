@@ -170,6 +170,27 @@ namespace frm
         buffer = std::make_shared<BufferResource>(m_allocator, buf, alloc);
     }
 
+    void VulkanContext::createImage(const VkImageCreateInfo& createInfo, VmaMemoryUsage usage, ImageResourceRef& buffer)
+    {
+        VkImage img;
+        VmaAllocation alloc;
+        VmaAllocationCreateInfo allocInfo{};
+        allocInfo.usage = usage;
+
+        if (VK_FAILED(vmaCreateImage(m_allocator, &createInfo, &allocInfo, &img, &alloc, nullptr))) {
+            throw std::runtime_error("Cannot create buffer");
+        }
+
+        buffer = std::make_shared<ImageResource>(m_allocator, img, alloc);
+    }
+
+    void VulkanContext::createImageView(const VkImageViewCreateInfo& createInfo, VkImageView* imageView)
+    {
+        if (VK_FAILED(vkCreateImageView(m_device, &createInfo, nullptr, imageView))) {
+            throw std::runtime_error("Cannot create image view");
+        }
+    }
+
     void VulkanContext::createCommandPool(uint32_t flags, VkCommandPool* cmdPool)
     {
         VkCommandPoolCreateInfo cmdPoolInfo{};
@@ -210,6 +231,13 @@ namespace frm
         }
     }
 
+    void VulkanContext::createDescriptorLayout(const VkDescriptorSetLayoutCreateInfo& createInfo, VkDescriptorSetLayout* setLayout)
+    {
+        if (VK_FAILED(vkCreateDescriptorSetLayout(m_device, &createInfo, nullptr, setLayout))) {
+            throw std::runtime_error("Cannot create pipeline layout");
+        }
+    }
+
     void VulkanContext::createPipelineLayout(const VkPipelineLayoutCreateInfo& createInfo, VkPipelineLayout* pipelineLayout)
     {
         if (VK_FAILED(vkCreatePipelineLayout(m_device, &createInfo, nullptr, pipelineLayout))) {
@@ -235,6 +263,34 @@ namespace frm
     {
         if (VK_FAILED(vkCreateRenderPass(m_device, &createInfo, nullptr, renderpass))) {
             throw std::runtime_error("Cannot create render pass");
+        }
+    }
+
+    void VulkanContext::createDescriptorPool(const VkDescriptorPoolCreateInfo& createInfo, VkDescriptorPool* descriptorPool)
+    {
+        if (VK_FAILED(vkCreateDescriptorPool(m_device, &createInfo, nullptr, descriptorPool))) {
+            throw std::runtime_error("Cannot create render pass");
+        }
+    }
+
+    void VulkanContext::allocDescriptorSet(VkDescriptorSetLayout layout, VkDescriptorPool descPool, VkDescriptorSet* set)
+    {
+        VkDescriptorSetAllocateInfo allocInfo{};
+
+        allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+        allocInfo.descriptorPool = descPool;
+        allocInfo.descriptorSetCount = 1;
+        allocInfo.pSetLayouts = &layout;
+
+        if (VK_FAILED(vkAllocateDescriptorSets(m_device, &allocInfo, set))) {
+            throw std::runtime_error("Cannot create render pass");
+        }
+    }
+
+    void VulkanContext::createSampler(const VkSamplerCreateInfo& createInfo, VkSampler* sampler)
+    {
+        if (VK_FAILED(vkCreateSampler(m_device, &createInfo, nullptr, sampler))) {
+            throw std::runtime_error("Cannot create sampler");
         }
     }
 
