@@ -3,7 +3,7 @@
 #include <framework/GPUResource.h>
 #include <framework/ShapeGen.h>
 
-struct TransformExample : public frm::App
+struct TextureExample : public frm::App
 {
     frm::ImageResourceRef image; // ImageResourceRef & BufferResourceRef are wrapper for VkImage and VkBuffer, object deletion is done automatically :)
     frm::BufferResourceRef vertexBuffer; 
@@ -509,6 +509,7 @@ struct TransformExample : public frm::App
         context.createDescriptorPool(descPoolInfo, &descriptorPool);
         context.allocDescriptorSet(descSetLayout, descriptorPool, &descSet);
 
+        // bind our texture to the descriptor
         imageDescInfo.sampler = sampler;
         imageDescInfo.imageView = imageView;
         imageDescInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
@@ -612,5 +613,5 @@ struct TransformExample : public frm::App
 
 int main()
 {
-    return frm::App::run<TransformExample>(640, 480);
+    return frm::App::run<TextureExample>(640, 480);
 }
